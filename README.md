@@ -18,7 +18,7 @@ Note:
 [OpenSourceSDRLab](https://opensourcesdrlab.com/products/aifw-wavesentry-esp32) official website.
 
 # Videos
-[![ABCD](https://img.youtube.com/vi/veseDgtHWbk/0.jpg)](https://www.youtube.com/watch?v=veseDgtHWbk)
+[![AIFW WaveSentry Portable ESP32 Multi-Tool](https://img.youtube.com/vi/veseDgtHWbk/0.jpg)](https://www.youtube.com/watch?v=veseDgtHWbk)
 
 # Functions
 Note: The current firmware version of this product has removed the aggressive features in ESP32 Marauder and only retained the features suitable for security testing.
