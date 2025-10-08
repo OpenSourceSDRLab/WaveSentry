@@ -19,6 +19,8 @@ Note:
 
 # Videos
 [![AIFW WaveSentry Portable ESP32 Multi-Tool](https://img.youtube.com/vi/veseDgtHWbk/0.jpg)](https://www.youtube.com/watch?v=veseDgtHWbk)
+[![WaveSentry Radio Receiver](https://img.youtube.com/vi/38EMz9IIhAg/0.jpg)](https://www.youtube.com/watch?v=38EMz9IIhAg)
+[![WaveSentry Pro - new hacker gadget with thermal imaging and am/fm radio](https://img.youtube.com/vi/nHMRX_xDvgA/0.jpg)](https://www.youtube.com/watch?v=nHMRX_xDvgA)
 
 # Functions
 Note: The current firmware version of this product has removed the aggressive features in ESP32 Marauder and only retained the features suitable for security testing.
