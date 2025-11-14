@@ -100,6 +100,11 @@ const String PROGMEM version_number = FIRMWARE_VERSION;
 
 uint32_t currentTime  = 0;
 
+lv_area_t g_btn_cont_area;
+bool g_limit_to_container = false;
+
+lv_disp_drv_t disp_drv;
+lv_disp_t* g_disp = NULL;
 
 void backlightOn() {
   #ifdef HAS_SCREEN
@@ -186,6 +191,7 @@ void setup()
   #endif
 
 
+
   backlightOn(); // Need this
 
   #ifdef HAS_SCREEN
@@ -227,6 +233,31 @@ void setup()
       #endif
     }
   #endif
+
+  lv_init();
+
+  static lv_color_t buf1[LV_HOR_RES_MAX * 10];  // 10行的缓冲
+  static lv_disp_buf_t disp_buf;
+  lv_disp_buf_init(&disp_buf, buf1, NULL, LV_HOR_RES_MAX * 10);
+
+  /* 注册显示驱动 */
+  
+  lv_disp_drv_init(&disp_drv);
+
+  disp_drv.flush_cb = my_disp_flush;  // 刷新函数
+  disp_drv.buffer = &disp_buf;
+  disp_drv.hor_res = 240;  // 屏幕宽
+  disp_drv.ver_res = 320;  // 屏幕高
+  g_disp = lv_disp_drv_register(&disp_drv); 
+  
+  lv_disp_drv_register(&disp_drv);
+
+  lv_indev_drv_t indev_drv;
+  lv_indev_drv_init(&indev_drv);             
+  indev_drv.type = LV_INDEV_TYPE_POINTER;    
+  indev_drv.read_cb = my_touchpad_read;      
+  lv_indev_drv_register(&indev_drv);   
+
 
   #ifdef HAS_SCREEN
     display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
@@ -282,7 +313,7 @@ void setup()
 
 void loop()
 { 
-
+  lv_task_handler();
   currentTime = millis();
   bool mini = false;
 

@@ -176,7 +176,7 @@ class MenuFunctions
 
     // Menu icons
 
-
+    
 
     void addNodes(Menu* menu, String name, uint16_t color, Menu* child, int place, std::function<void()> callable, bool selected = false, String command = "");
     void battery(bool initial = false);
@@ -193,6 +193,10 @@ class MenuFunctions
 
     uint8_t updateTouch(uint16_t *x, uint16_t *y, uint16_t threshold = 600);
 
+
+    lv_obj_t* lv_buttons[BUTTON_ARRAY_LEN];
+    lv_obj_t* button_container; // 按钮容器
+    lv_obj_t * custom_scr;
   public:
     MenuFunctions();
 
@@ -233,6 +237,14 @@ class MenuFunctions
     void main(uint32_t currentTime);
     void RunSetup();
     void orientDisplay();
+
+    // 创建新的按键格式
+    void createLVGLButtons(Menu* menu, int starting_index = 0);
+    static void button_event_cb(lv_obj_t * btn, lv_event_t event);
+    void hiden_LVGL_menu();
+    void reshow_LVGL_menu();
+
+    lv_obj_t * list1{NULL};
 };
 
 

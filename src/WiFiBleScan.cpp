@@ -12,6 +12,9 @@ LinkedList<Station>* stations;
 LinkedList<AirTag>* airtags;
 LinkedList<Flipper>* flippers;
 
+extern lv_disp_t* g_disp;
+extern lv_disp_drv_t disp_drv;
+
 extern "C" int ieee80211_raw_frame_sanity_check(int32_t arg, int32_t arg2, int32_t arg3){
     if (arg == 31337)
       return 1;
@@ -913,6 +916,7 @@ void WiFiBleScan::parseBSSID(const char* bssidStr, uint8_t* bssid) {
 }
 
 void WiFiBleScan::RunLoadATList() {
+  int good_offset = 150;
   #ifdef HAS_SD
     // Prepare to access the file
     File file = sd_obj.getFile("/Airtags_0.log");
@@ -921,7 +925,7 @@ void WiFiBleScan::RunLoadATList() {
       #ifdef HAS_SCREEN
         display_obj.tft.setTextWrap(false);
         display_obj.tft.setFreeFont(NULL);
-        display_obj.tft.setCursor(0, 100);
+        display_obj.tft.setCursor(0, good_offset);
         display_obj.tft.setTextSize(1);
         display_obj.tft.setTextColor(TFT_CYAN);
       
@@ -940,7 +944,7 @@ void WiFiBleScan::RunLoadATList() {
       #ifdef HAS_SCREEN
         display_obj.tft.setTextWrap(false);
         display_obj.tft.setFreeFont(NULL);
-        display_obj.tft.setCursor(0, 100);
+        display_obj.tft.setCursor(0, good_offset);
         display_obj.tft.setTextSize(1);
         display_obj.tft.setTextColor(TFT_CYAN);
       
@@ -967,7 +971,7 @@ void WiFiBleScan::RunLoadATList() {
     #ifdef HAS_SCREEN
       display_obj.tft.setTextWrap(false);
       display_obj.tft.setFreeFont(NULL);
-      display_obj.tft.setCursor(0, 100);
+      display_obj.tft.setCursor(0, good_offset);
       display_obj.tft.setTextSize(1);
       display_obj.tft.setTextColor(TFT_CYAN);
     
@@ -980,6 +984,7 @@ void WiFiBleScan::RunLoadATList() {
 }
 
 void WiFiBleScan::RunSaveATList(bool save_as) {
+  int good_offset = 150;
   if (save_as) {
     sd_obj.removeFile("/Airtags_0.log");
 
@@ -1005,7 +1010,7 @@ void WiFiBleScan::RunSaveATList(bool save_as) {
     #ifdef HAS_SCREEN
       display_obj.tft.setTextWrap(false);
       display_obj.tft.setFreeFont(NULL);
-      display_obj.tft.setCursor(0, 100);
+      display_obj.tft.setCursor(0, good_offset);
       display_obj.tft.setTextSize(1);
       display_obj.tft.setTextColor(TFT_CYAN);
     
@@ -1018,6 +1023,7 @@ void WiFiBleScan::RunSaveATList(bool save_as) {
 }
 
 void WiFiBleScan::RunLoadAPList() {
+  int good_offset = 150;
   #ifdef HAS_SD
     File file = sd_obj.getFile("/APs_0.log");
     if (!file) {
@@ -1025,7 +1031,7 @@ void WiFiBleScan::RunLoadAPList() {
       #ifdef HAS_SCREEN
         display_obj.tft.setTextWrap(false);
         display_obj.tft.setFreeFont(NULL);
-        display_obj.tft.setCursor(0, 100);
+        display_obj.tft.setCursor(0, good_offset);
         display_obj.tft.setTextSize(1);
         display_obj.tft.setTextColor(TFT_CYAN);
       
@@ -1043,7 +1049,7 @@ void WiFiBleScan::RunLoadAPList() {
       #ifdef HAS_SCREEN
         display_obj.tft.setTextWrap(false);
         display_obj.tft.setFreeFont(NULL);
-        display_obj.tft.setCursor(0, 100);
+        display_obj.tft.setCursor(0, good_offset);
         display_obj.tft.setTextSize(1);
         display_obj.tft.setTextColor(TFT_CYAN);
       
@@ -1071,7 +1077,7 @@ void WiFiBleScan::RunLoadAPList() {
     #ifdef HAS_SCREEN
       display_obj.tft.setTextWrap(false);
       display_obj.tft.setFreeFont(NULL);
-      display_obj.tft.setCursor(0, 100);
+      display_obj.tft.setCursor(0, good_offset);
       display_obj.tft.setTextSize(1);
       display_obj.tft.setTextColor(TFT_CYAN);
     
@@ -1112,9 +1118,11 @@ void WiFiBleScan::RunSaveAPList(bool save_as) {
     buffer_obj.append(jsonString);
 
     #ifdef HAS_SCREEN
+      int good_offset = 150;
       display_obj.tft.setTextWrap(false);
       display_obj.tft.setFreeFont(NULL);
-      display_obj.tft.setCursor(0, 100);
+      // display_obj.tft.setCursor(0, 100);
+      display_obj.tft.setCursor(0, good_offset);
       display_obj.tft.setTextSize(1);
       display_obj.tft.setTextColor(TFT_CYAN);
     
@@ -1173,7 +1181,15 @@ void WiFiBleScan::RunAPScan(uint8_t scan_mode, uint16_t color)
   void WiFiBleScan::RunLvJoinWiFi(uint8_t scan_mode, uint16_t color) {
   
     display_obj.tft.init();
+
     display_obj.tft.setRotation(3); //default 1
+
+    disp_drv.hor_res = display_obj.tft.width();
+    disp_drv.ver_res = display_obj.tft.height();
+
+    // 3.2 通知 LVGL 刷新驱动参数（LVGL v7 支持）
+    lv_disp_drv_update(g_disp, &disp_drv);
+
     
     #ifdef TFT_SHIELD
       uint16_t calData[5] = { 391, 3491, 266, 3505, 7 }; // Landscape TFT Shield
@@ -1185,6 +1201,8 @@ void WiFiBleScan::RunAPScan(uint8_t scan_mode, uint16_t color)
     #endif
     #ifdef HAS_ILI9341
       display_obj.tft.setTouch(calData);
+      // 这里进行图像反转
+      
     #endif
     
   
@@ -1452,13 +1470,14 @@ void WiFiBleScan::RunInfo()
   String sta_mac = this->getStaMAC();
   String ap_mac = this->getApMAC();
   String free_ram = this->freeRAM();
-
+  int good_offset = 150;
   Serial.println(free_ram);
 
   #ifdef HAS_SCREEN
     display_obj.tft.setTextWrap(false);
     display_obj.tft.setFreeFont(NULL);
-    display_obj.tft.setCursor(0, SCREEN_HEIGHT / 3);
+    // display_obj.tft.setCursor(0, SCREEN_HEIGHT / 3);
+    display_obj.tft.setCursor(0, good_offset);
     display_obj.tft.setTextSize(1);
     display_obj.tft.setTextColor(TFT_CYAN);
     display_obj.tft.println(text_table4[20]);
@@ -1520,6 +1539,8 @@ void WiFiBleScan::RunInfo()
   //#endif
 }
 
+
+
 void WiFiBleScan::RunPacketMonitor(uint8_t scan_mode, uint16_t color)
 {
   startPcap("packet_monitor");
@@ -1545,9 +1566,17 @@ void WiFiBleScan::RunPacketMonitor(uint8_t scan_mode, uint16_t color)
         //uint16_t calData[5] = { 213, 3469, 320, 3446, 1 }; // Landscape TFT DIY default
         uint16_t calData[5] = { 250, 3470, 237, 3700, 7 };  //tuned by s, for rotation 3, 1st is x offset 2nd is x scale, 3rd is y offset 4th is y scale
         Serial.println("Using TFT DIY");
+
+        // lv_disp_drv_update(g_disp, &g_disp_drv);
+  
+
       #endif
       display_obj.tft.setTouch(calData);
-    
+      disp_drv.hor_res = display_obj.tft.width();
+      disp_drv.ver_res = display_obj.tft.height();
+
+      // 3.2 通知 LVGL 刷新驱动参数（LVGL v7 支持）
+      lv_disp_drv_update(g_disp, &disp_drv);
       //display_obj.tft.setFreeFont(1);
       display_obj.tft.setFreeFont(NULL);
       display_obj.tft.setTextSize(1);
