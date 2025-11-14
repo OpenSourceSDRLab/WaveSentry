@@ -5,6 +5,11 @@
 #ifdef HAS_SCREEN
 
 extern const unsigned char menu_icons[][66];
+
+extern lv_area_t g_btn_cont_area;
+extern bool g_limit_to_container;
+static bool g_block_lvgl = false;
+
 PROGMEM lv_obj_t * slider_label;
 PROGMEM lv_obj_t * ta1;
 PROGMEM lv_obj_t * ta2;
@@ -12,6 +17,8 @@ PROGMEM lv_obj_t * save_name;
 
 MenuFunctions::MenuFunctions()
 {
+	button_container = NULL;
+	custom_scr = NULL;
 }
 
 // LVGL Stuff
@@ -31,24 +38,203 @@ MenuFunctions::MenuFunctions()
   }
   
   /* Display flushing */
-  void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
-  {
-    extern Display display_obj;
-    uint16_t c;
-  
-    display_obj.tft.startWrite();
-    display_obj.tft.setAddrWindow(area->x1, area->y1, (area->x2 - area->x1 + 1), (area->y2 - area->y1 + 1));
-    for (int y = area->y1; y <= area->y2; y++) {
-      for (int x = area->x1; x <= area->x2; x++) {
-        c = color_p->full;
-        display_obj.tft.writeColor(c, 1);
-        color_p++;
-      }
-    }
-    display_obj.tft.endWrite();
-    lv_disp_flush_ready(disp);
-  }
-  
+//   void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
+//   {
+//     extern Display display_obj;
+//     uint16_t c;
+
+//     // 检查刷新区域是否与状态栏重叠
+//     // 如果刷新区域在状态栏内（y < TOP_FIXED_AREA），则跳过刷新
+//     if (area->y2 < TOP_FIXED_AREA) {
+//         // 完全在状态栏内，直接返回不刷新
+//         lv_disp_flush_ready(disp);
+//         return;
+//     }
+    
+//     // 如果部分重叠，只刷新状态栏下方的部分
+//     lv_area_t flush_area = *area;
+//     int skip_pixels = 0;
+    
+//     if (area->y1 < TOP_FIXED_AREA) {
+//         // 部分重叠，计算需要跳过的像素数
+//         skip_pixels = (TOP_FIXED_AREA - area->y1) * (area->x2 - area->x1 + 1);
+//         flush_area.y1 = TOP_FIXED_AREA;
+//         // 跳过这些像素的缓冲区指针
+//         color_p += skip_pixels;
+//     }
+
+//     display_obj.tft.startWrite();
+//     display_obj.tft.setAddrWindow(flush_area.x1, flush_area.y1, 
+//                                   (flush_area.x2 - flush_area.x1 + 1), 
+//                                   (flush_area.y2 - flush_area.y1 + 1));
+    
+//     for (int y = flush_area.y1; y <= flush_area.y2; y++) {
+//         for (int x = flush_area.x1; x <= flush_area.x2; x++) {
+//             c = color_p->full;
+//             display_obj.tft.writeColor(c, 1);
+//             color_p++;
+//         }
+//     }
+//     display_obj.tft.endWrite();
+//     lv_disp_flush_ready(disp);
+//   }
+static inline bool rect_overlap(const lv_area_t* a, const lv_area_t* b) {
+  return !(a->x2 < b->x1 || b->x2 < a->x1 || a->y2 < b->y1 || b->y2 < a->y1);
+}
+static inline void rect_intersection(lv_area_t* out, const lv_area_t* a, const lv_area_t* b) {
+  out->x1 = a->x1 > b->x1 ? a->x1 : b->x1;
+  out->y1 = a->y1 > b->y1 ? a->y1 : b->y1;
+  out->x2 = a->x2 < b->x2 ? a->x2 : b->x2;
+  out->y2 = a->y2 < b->y2 ? a->y2 : b->y2;
+}
+
+/// @brief LVGL渲染函数接口
+/// @param disp 
+/// @param area 
+/// @param color_p 
+// void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
+// {
+// 	// 如果设置不渲染就不显示菜单
+// 	if (g_block_lvgl) {
+// 		lv_disp_flush_ready(disp);
+// 		return;
+//   	}
+
+// 	extern Display display_obj;
+
+// 	// 屏幕可以显示的区域
+// 	lv_area_t visible = { 0, 0, 240 - 1, 320 - 1 };
+
+// 	// if(g_limit_to_container)
+// 	// {
+// 	// 	visible= { 0, TOP_FIXED_AREA, 240 - 1, 320 -1 };
+// 	// }
+// 	// else
+// 	// {
+// 	// 	visible= { 0, 0, 240 - 1, 320 -1 };
+// 	// }
+	 
+
+// 	// 如果当前绘制区域不在可显示范围内，就不要渲染了
+// 	if (!rect_overlap(area, &visible)) {
+// 		lv_disp_flush_ready(disp);
+// 		return;
+// 	}
+
+// 	// 给出可以渲染的区域
+// 	lv_area_t flush_area;
+// 	rect_intersection(&flush_area, area, &visible);
+
+//   	// 2) 如需仅刷新 button_container，再与其相交
+//   	if (g_limit_to_container) {
+    
+// 		if (!rect_overlap(&flush_area, &g_btn_cont_area)) 
+// 		{
+// 			lv_disp_flush_ready(disp);
+// 			return;
+// 		}
+// 		rect_intersection(&flush_area, &flush_area, &g_btn_cont_area);
+// 	}
+
+// 	// 3) 计算源区域宽与起始偏移
+// 	const int src_w  = area->x2 - area->x1 + 1;
+// 	const int skip_y = flush_area.y1 - area->y1;
+// 	const int skip_x = flush_area.x1 - area->x1;
+// 	color_p += skip_y * src_w + skip_x;
+
+// 	const int draw_w = flush_area.x2 - flush_area.x1 + 1;
+// 	const int draw_h = flush_area.y2 - flush_area.y1 + 1;
+
+// 	display_obj.tft.startWrite();
+// 	display_obj.tft.setAddrWindow(flush_area.x1, flush_area.y1, draw_w, draw_h);
+
+// 	// 4) 每行结束后前进 src_w（因为行内我们用 color_p[x] 索引访问）
+// 	for (int y = 0; y < draw_h; y++) {
+// 		for (int x = 0; x < draw_w; x++)
+// 		{
+// 			display_obj.tft.writeColor(color_p[x].full, 1);
+// 		}
+// 		color_p += src_w;
+// 	}
+
+// 	display_obj.tft.endWrite();
+// 	lv_disp_flush_ready(disp);
+
+// }
+
+void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
+{
+	// 允许外部屏蔽 LVGL 刷新
+	if (g_block_lvgl) {
+		lv_disp_flush_ready(disp);
+		return;
+	}
+
+	extern Display display_obj;
+
+	// 旋转自适应：使用当前旋转下的宽高，避免写死 240x320
+	const int scr_w = display_obj.tft.width();   // 随 setRotation() 变化
+	const int scr_h = display_obj.tft.height();  // 随 setRotation() 变化
+
+	// 仅刷新状态栏以下的可见区域（无论旋转为 0/1/2/3，y=0 顶部保持一致）
+	lv_area_t visible = { 0, 0, scr_w - 1, scr_h - 1 };
+	if (!rect_overlap(area, &visible)) {
+		lv_disp_flush_ready(disp);
+		return;
+	}
+
+	// 与可见区域求交
+	lv_area_t flush_area;
+	rect_intersection(&flush_area, area, &visible);
+
+	// 如启用仅刷新容器，则进一步与容器区域求交
+	if (g_limit_to_container) {
+		if (!rect_overlap(&flush_area, &g_btn_cont_area)) {
+			lv_disp_flush_ready(disp);
+			return;
+		}
+		rect_intersection(&flush_area, &flush_area, &g_btn_cont_area);
+	}
+
+	// 源区域宽高（与 LVGL 传入的 area 一致）
+	const int src_w = (area->x2 - area->x1 + 1);
+	const int src_h = (area->y2 - area->y1 + 1);
+
+	// 目标绘制宽高（实际要写到屏的交集）
+	const int draw_w = (flush_area.x2 - flush_area.x1 + 1);
+	const int draw_h = (flush_area.y2 - flush_area.y1 + 1);
+
+	// 需要在源缓冲内跳过的偏移（以 area 左上为原点）
+	const int skip_x = (flush_area.x1 - area->x1);
+	const int skip_y = (flush_area.y1 - area->y1);
+
+	// 健壮性校验，防止越界
+	if (draw_w <= 0 || draw_h <= 0 ||
+		src_w <= 0 || src_h <= 0 ||
+		skip_x < 0 || skip_y < 0 ||
+		(skip_x + draw_w) > src_w ||
+		(skip_y + draw_h) > src_h) {
+		lv_disp_flush_ready(disp);
+		return;
+	}
+
+	// 行基指针：不修改传入的 color_p，本地按行列计算偏移
+	const lv_color_t* base_ptr = color_p;
+
+	display_obj.tft.startWrite();
+	display_obj.tft.setAddrWindow(flush_area.x1, flush_area.y1, draw_w, draw_h);
+
+	for (int y = 0; y < draw_h; y++) {
+		const lv_color_t* row_ptr = base_ptr + (skip_y + y) * src_w + skip_x;
+		for (int x = 0; x < draw_w; x++) {
+			display_obj.tft.writeColor(row_ptr[x].full, 1);
+		}
+	}
+
+	display_obj.tft.endWrite();
+	lv_disp_flush_ready(disp);
+}
+
   
   bool my_touchpad_read(lv_indev_drv_t * indev_driver, lv_indev_data_t * data)
   {
@@ -63,7 +249,8 @@ MenuFunctions::MenuFunctions()
       return false;
     }
   
-    if(touchX>WIDTH_1 || touchY > HEIGHT_1)
+    // if(touchX>WIDTH_1 || touchY > HEIGHT_1)
+	if(touchX>TFT_WIDTH || touchY > TFT_HEIGHT)
     {
       Serial.println("Y or y outside of expected parameters..");
       Serial.print("y:");
@@ -93,8 +280,10 @@ MenuFunctions::MenuFunctions()
   
     lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
-    disp_drv.hor_res = WIDTH_1;
-    disp_drv.ver_res = HEIGHT_1;
+    // disp_drv.hor_res = WIDTH_1;
+    // disp_drv.ver_res = HEIGHT_1;
+	disp_drv.hor_res = 240;
+    disp_drv.ver_res = 320;
     disp_drv.flush_cb = my_disp_flush;
     disp_drv.buffer = &disp_buf;
     lv_disp_drv_register(&disp_drv);
@@ -224,15 +413,64 @@ MenuFunctions::MenuFunctions()
   }
 
   // GFX Function to build a list showing all APs scanned
-  void MenuFunctions::addAPGFX(String type){
-    extern WiFiBleScan wifi_ble_scan_obj;
-    extern LinkedList<AccessPoint>* access_points;
-    extern LinkedList<AirTag>* airtags;
-  
-    lv_obj_t * list1 = lv_list_create(lv_scr_act(), NULL);
-    lv_obj_set_size(list1, 160, 200);
-    lv_obj_set_width(list1, LV_HOR_RES);
-    lv_obj_align(list1, NULL, LV_ALIGN_CENTER, 0, 0);
+void MenuFunctions::addAPGFX(String type)
+{
+	extern WiFiBleScan wifi_ble_scan_obj;
+	extern LinkedList<AccessPoint>* access_points;
+	extern LinkedList<AirTag>* airtags;
+	
+	// 清空之前的页面
+	if (button_container) 
+	{
+		lv_obj_del(button_container);
+		button_container = NULL;
+	}
+	for (int i = 0; i < BUTTON_ARRAY_LEN; i++) 
+		lv_buttons[i] = NULL;
+
+	// display_obj.clearScreen();
+	// 清空当前页面
+	lv_obj_clean(lv_scr_act());
+	
+	if(list1)
+	{
+		lv_obj_del(list1);
+		list1 = NULL;
+	}
+
+	// 创建这个页面
+    list1 = lv_list_create(lv_scr_act(), NULL);
+
+	// lv_obj_set_style_local_bg_color(list1,LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_RED);
+	lv_obj_set_style_local_radius(list1, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
+	lv_obj_set_style_local_border_width(list1, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
+	lv_obj_set_style_local_pad_inner(list1, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
+
+    lv_obj_set_size(list1, 320, 240);
+    lv_obj_set_pos(list1,0,0);
+	// lv_obj_t * btn = lv_list_add_btn(list1, LV_SYMBOL_OK, "testbtn");
+	
+	// Serial.printf("[addAPGFX] scr x:%d y:%d w:%d h:%d\n",
+    //   lv_obj_get_x(lv_scr_act()), lv_obj_get_y(lv_scr_act()),
+    //   lv_obj_get_width(lv_scr_act()), lv_obj_get_height(lv_scr_act()));
+
+	// Serial.printf("list1 x:%d y:%d w:%d h:%d\n", lv_obj_get_x(list1), lv_obj_get_y(list1), lv_obj_get_width(list1), lv_obj_get_height(list1));
+
+	// 这里默认进入渲染
+	// 目前渲染逻辑有点奇怪
+	// if(1)
+	// {
+	// 	g_block_lvgl = false;
+	// 	g_limit_to_container = false;
+	// 	// lv_obj_get_coords(list1, &g_btn_cont_area);
+	// 	return;
+	// }
+    // lv_obj_set_size(list1, 160, 200);
+	
+	lv_obj_align(list1, NULL, LV_ALIGN_CENTER, 0, 0);
+
+	g_block_lvgl = false;
+	g_limit_to_container = false;
   
     lv_obj_t * list_btn;
   
@@ -255,7 +493,8 @@ MenuFunctions::MenuFunctions()
       }
     }
     else if (type == "Airtag") {
-      for (int i = 0; i < airtags->size(); i++) {
+      for (int i = 0; i < airtags->size(); i++)
+	  {
         char buf[airtags->get(i).mac.length() + 1] = {};
         airtags->get(i).mac.toCharArray(buf, airtags->get(i).mac.length() + 1);
         
@@ -267,7 +506,7 @@ MenuFunctions::MenuFunctions()
         //  lv_btn_toggle(list_btn);
       }
     }
-  }
+}
   
   void at_list_cb(lv_obj_t * btn, lv_event_t event) {
     extern MenuFunctions menu_function_obj;
@@ -352,10 +591,15 @@ MenuFunctions::MenuFunctions()
     
     if (event == LV_EVENT_CLICKED) {
       if (btn_text != text09) {
+
       }
-      else {
+      else 
+	  {
         Serial.println("Exiting...");
-        lv_obj_del_async(lv_obj_get_parent(lv_obj_get_parent(btn)));
+		// async会有bug
+        // lv_obj_del_async(lv_obj_get_parent(lv_obj_get_parent(btn)));
+
+		lv_obj_del(lv_obj_get_parent(lv_obj_get_parent(btn)));
   
         for (int i = 0; i < access_points->size(); i++) {
           if (access_points->get(i).selected) {
@@ -462,10 +706,14 @@ MenuFunctions::MenuFunctions()
       lv_textarea_set_text(ta1, display_string.c_str());
   
       lv_textarea_set_text(ta2, "");
-    }else if(event == LV_EVENT_CANCEL){
-      printf("LV_EVENT_CANCEL\n");
-      menu_function_obj.deinitLVGL();
-      display_obj.exit_draw = true; // set everything back to normal
+    }
+
+	else if(event == LV_EVENT_CANCEL)
+	{
+    //   printf("LV_EVENT_CANCEL\n");
+    //   menu_function_obj.deinitLVGL();
+
+    	display_obj.exit_draw = true; // set everything back to normal
     }
   }
   
@@ -535,51 +783,58 @@ void MenuFunctions::buttonSelected(uint8_t b, int8_t x) {
 // Function to check menu input
 void MenuFunctions::main(uint32_t currentTime)
 {
-  // Some function exited and we need to go back to normal
-  if (display_obj.exit_draw) {
-    wifi_ble_scan_obj.currentScanMode = WIFI_SCAN_OFF;
-    display_obj.exit_draw = false;
-    this->orientDisplay();
-  }
-  if ((wifi_ble_scan_obj.currentScanMode == WIFI_SCAN_OFF) ||
-      (wifi_ble_scan_obj.currentScanMode == OTA_UPDATE) ||
-      (wifi_ble_scan_obj.currentScanMode == ESP_UPDATE) ||
-      (wifi_ble_scan_obj.currentScanMode == SHOW_INFO) ||
-      (wifi_ble_scan_obj.currentScanMode == WIFI_SCAN_GPS_DATA) ||
-      (wifi_ble_scan_obj.currentScanMode == WIFI_SCAN_GPS_NMEA)) {
-    if (wifi_ble_scan_obj.orient_display) {
-      this->orientDisplay();
-      wifi_ble_scan_obj.orient_display = false;
-    }
-  }
+  	// Some function exited and we need to go back to normal
+	if (display_obj.exit_draw) 
+	{
 
-  if (currentTime != 0) {
-    if (currentTime - initTime >= BANNER_TIME) {
-      this->initTime = millis();
-      if ((wifi_ble_scan_obj.currentScanMode != LV_JOIN_WIFI) &&
-          (wifi_ble_scan_obj.currentScanMode != LV_ADD_SSID))
-        this->updateStatusBar();
-    }
-  }
+		wifi_ble_scan_obj.currentScanMode = WIFI_SCAN_OFF;
+		display_obj.exit_draw = false;
+		this->orientDisplay();
+
+	}
+	if ((wifi_ble_scan_obj.currentScanMode == WIFI_SCAN_OFF) ||
+		(wifi_ble_scan_obj.currentScanMode == OTA_UPDATE) ||
+		(wifi_ble_scan_obj.currentScanMode == ESP_UPDATE) ||
+		(wifi_ble_scan_obj.currentScanMode == SHOW_INFO) ||
+		(wifi_ble_scan_obj.currentScanMode == WIFI_SCAN_GPS_DATA) ||
+		(wifi_ble_scan_obj.currentScanMode == WIFI_SCAN_GPS_NMEA)) 
+	{
+		if (wifi_ble_scan_obj.orient_display) 
+		{
+			this->orientDisplay();
+			wifi_ble_scan_obj.orient_display = false;
+		}
+  	}
+
+	if (currentTime != 0) 
+	{
+		if (currentTime - initTime >= BANNER_TIME) 
+		{
+			this->initTime = millis();
+			if ((wifi_ble_scan_obj.currentScanMode != LV_JOIN_WIFI) &&
+				(wifi_ble_scan_obj.currentScanMode != LV_ADD_SSID))
+			this->updateStatusBar();
+		}
+	}
 
 
-  boolean pressed = false;
-  // This is code from bodmer's keypad example
-  uint16_t t_x = 0, t_y = 0; // To store the touch coordinates
+	boolean pressed = false;
+	// This is code from bodmer's keypad example
+	uint16_t t_x = 0, t_y = 0; // To store the touch coordinates
 
-  // Get the display buffer out of the way
-  if ((wifi_ble_scan_obj.currentScanMode != WIFI_SCAN_OFF ))
-    display_obj.displayBuffer();
+	// Get the display buffer out of the way
+	if ((wifi_ble_scan_obj.currentScanMode != WIFI_SCAN_OFF ))
+		display_obj.displayBuffer();
 
 
   // Pressed will be set true is there is a valid touch on the screen
-  int pre_getTouch = millis();
+	int pre_getTouch = millis();
 
-  // getTouch causes a 10ms delay which makes beacon spam less effective
-  #ifdef HAS_ILI9341
-    if (!this->disable_touch)
-      pressed = this->updateTouch(&t_x, &t_y);
-  #endif
+	// getTouch causes a 10ms delay which makes beacon spam less effective
+	#ifdef HAS_ILI9341
+	if (!this->disable_touch)
+		pressed = this->updateTouch(&t_x, &t_y);
+	#endif
 
 
   // This is if there are scans/attacks going on
@@ -1020,8 +1275,9 @@ String MenuFunctions::callSetting(String key) {
 }
 
 void MenuFunctions::displaySetting(String key, Menu* menu, int index) {
+  int good_offset = 150;
   specSettingMenu.name = key;
-
+	
   bool setting_value = settings_obj.loadSetting<bool>(key);
 
   // Make a local copy of menu node
@@ -1029,7 +1285,7 @@ void MenuFunctions::displaySetting(String key, Menu* menu, int index) {
 
   display_obj.tft.setTextWrap(false);
   display_obj.tft.setFreeFont(NULL);
-  display_obj.tft.setCursor(0, 100);
+  display_obj.tft.setCursor(0, good_offset);
   display_obj.tft.setTextSize(1);
 
   // Set local copy value
@@ -1059,7 +1315,7 @@ void MenuFunctions::RunSetup()
   this->disable_touch = false;
   
   #ifdef HAS_ILI9341
-    this->initLVGL();
+    // this->initLVGL();
   #endif
    
   // root menu stuff
@@ -1173,7 +1429,9 @@ void MenuFunctions::RunSetup()
   // Build Main Menu
   mainMenu.parentMenu = NULL;
   this->addNodes(&mainMenu, text_table1[7], TFT_GREEN, NULL, WIFI, [this]() {
-    this->changeMenu(&wifiMenu);
+	
+	
+	this->changeMenu(&wifiMenu);
   });
   this->addNodes(&mainMenu, text_table1[19], TFT_CYAN, NULL, BLUETOOTH, [this]() {
     this->changeMenu(&bluetoothMenu);
@@ -1213,19 +1471,25 @@ void MenuFunctions::RunSetup()
   this->addNodes(&wifiSnifferMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() {
     this->changeMenu(wifiSnifferMenu.parentMenu);
   });
+
   this->addNodes(&wifiSnifferMenu, text_table1[42], TFT_CYAN, NULL, PROBE_SNIFF, [this]() {
-    display_obj.clearScreen();
+    	
+		hiden_LVGL_menu();
+	display_obj.clearScreen();
     this->drawStatusBar();
     wifi_ble_scan_obj.StartScan(WIFI_SCAN_PROBE, TFT_CYAN);
   });
   this->addNodes(&wifiSnifferMenu, text_table1[43], TFT_MAGENTA, NULL, BEACON_SNIFF, [this]() {
-    display_obj.clearScreen();
+    	
+		hiden_LVGL_menu();
+	display_obj.clearScreen();
     this->drawStatusBar();
     wifi_ble_scan_obj.StartScan(WIFI_SCAN_AP, TFT_MAGENTA);
   });
   #ifdef HAS_ILI9341
     this->addNodes(&wifiSnifferMenu, text_table1[45], TFT_BLUE, NULL, PACKET_MONITOR, [this]() {
-      wifi_ble_scan_obj.StartScan(WIFI_PACKET_MONITOR, TFT_BLUE);
+    	hiden_LVGL_menu();
+	  	wifi_ble_scan_obj.StartScan(WIFI_PACKET_MONITOR, TFT_BLUE);
     });
   #else
     this->addNodes(&wifiSnifferMenu, text_table1[45], TFT_BLUE, NULL, PACKET_MONITOR, [this]() {
@@ -1235,23 +1499,35 @@ void MenuFunctions::RunSetup()
     });
   #endif
   this->addNodes(&wifiSnifferMenu, text_table1[49], TFT_MAGENTA, NULL, BEACON_SNIFF, [this]() {
-    display_obj.clearScreen();
+
+    hiden_LVGL_menu();
+
+	display_obj.clearScreen();
     this->drawStatusBar();
     wifi_ble_scan_obj.StartScan(WIFI_SCAN_TARGET_AP, TFT_MAGENTA);
   });
   this->addNodes(&wifiSnifferMenu, text_table1[58], TFT_WHITE, NULL, PACKET_MONITOR, [this]() {
-    display_obj.clearScreen();
+    
+	hiden_LVGL_menu();
+	
+	display_obj.clearScreen();
     this->drawStatusBar();
     wifi_ble_scan_obj.StartScan(WIFI_SCAN_RAW_CAPTURE, TFT_WHITE);
   });
   this->addNodes(&wifiSnifferMenu, text_table1[59], TFT_ORANGE, NULL, PACKET_MONITOR, [this]() {
-    display_obj.clearScreen();
+	
+    hiden_LVGL_menu();
+
+	display_obj.clearScreen();
     this->drawStatusBar();
     wifi_ble_scan_obj.StartScan(WIFI_SCAN_STATION, TFT_WHITE);
   });
   #ifdef HAS_ILI9341
     this->addNodes(&wifiSnifferMenu, "Signal Monitor", TFT_CYAN, NULL, PACKET_MONITOR, [this]() {
-      display_obj.clearScreen();
+    	
+		hiden_LVGL_menu();
+      
+	  display_obj.clearScreen();
       this->drawStatusBar();
       wifi_ble_scan_obj.StartScan(WIFI_SCAN_SIG_STREN, TFT_CYAN);
     });
@@ -1275,29 +1551,44 @@ void MenuFunctions::RunSetup()
 
   // Build Bluetooth Menu
   bluetoothMenu.parentMenu = &mainMenu; // Second Menu is third menu parent
-  this->addNodes(&bluetoothMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() {
-    this->changeMenu(bluetoothMenu.parentMenu);
+  this->addNodes(&bluetoothMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() 
+  {
+		// wifi_ble_scan_obj.StartScan(WIFI_SCAN_OFF);
+		// reshow_LVGL_menu();
+		this->changeMenu(bluetoothMenu.parentMenu);
   });
+
   this->addNodes(&bluetoothMenu, text_table1[31], TFT_YELLOW, NULL, SNIFFERS, [this]() {
     this->changeMenu(&bluetoothSnifferMenu);
   });
 
   // Build bluetooth sniffer Menu
   bluetoothSnifferMenu.parentMenu = &bluetoothMenu; // Second Menu is third menu parent
-  this->addNodes(&bluetoothSnifferMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() {
-    this->changeMenu(bluetoothSnifferMenu.parentMenu);
+  //   exit按键？
+  this->addNodes(&bluetoothSnifferMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() 
+  {
+	this->changeMenu(bluetoothSnifferMenu.parentMenu);
   });
-  this->addNodes(&bluetoothSnifferMenu, text_table1[34], TFT_GREEN, NULL, BLUETOOTH_SNIFF, [this]() {
-    display_obj.clearScreen();
+
+  //   blue toothsniff
+  this->addNodes(&bluetoothSnifferMenu, text_table1[34], TFT_GREEN, NULL, BLUETOOTH_SNIFF, [this]() 
+  {
+	hiden_LVGL_menu();
+	display_obj.clearScreen();
     this->drawStatusBar();
     wifi_ble_scan_obj.StartScan(BT_SCAN_ALL, TFT_GREEN);
+    
   });
-  this->addNodes(&bluetoothSnifferMenu, "Flipper Sniff", TFT_ORANGE, NULL, FLIPPER, [this]() {
+  this->addNodes(&bluetoothSnifferMenu, "Flipper Sniff", TFT_ORANGE, NULL, FLIPPER, [this]() 
+  {
+	hiden_LVGL_menu();
     display_obj.clearScreen();
     this->drawStatusBar();
     wifi_ble_scan_obj.StartScan(BT_SCAN_FLIPPER, TFT_ORANGE);
   });
-  this->addNodes(&bluetoothSnifferMenu, "Airtag Sniff", TFT_WHITE, NULL, BLUETOOTH_SNIFF, [this]() {
+  this->addNodes(&bluetoothSnifferMenu, "Airtag Sniff", TFT_WHITE, NULL, BLUETOOTH_SNIFF, [this]() 
+  {
+	hiden_LVGL_menu();
     display_obj.clearScreen();
     this->drawStatusBar();
     wifi_ble_scan_obj.StartScan(BT_SCAN_AIRTAG, TFT_WHITE);
@@ -1323,11 +1614,13 @@ void MenuFunctions::RunSetup()
     wifi_ble_scan_obj.currentScanMode = SHOW_INFO;
     this->changeMenu(&languageMenu);   
   });
+  
   this->addNodes(&deviceMenu, text_table1[17], TFT_WHITE, NULL, DEVICE_INFO, [this]() {
     wifi_ble_scan_obj.currentScanMode = SHOW_INFO;
     this->changeMenu(&infoMenu);
     wifi_ble_scan_obj.RunInfo();
   });
+
   this->addNodes(&deviceMenu, text08, TFT_NAVY, NULL, KEYBOARD_ICO, [this]() {
     this->changeMenu(&settingsMenu);
   });
@@ -1467,28 +1760,31 @@ void MenuFunctions::RunSetup()
     });
   #endif
 
-  // Web Update
-  updateMenu.parentMenu = &deviceMenu;
+	// Web Update
+	updateMenu.parentMenu = &deviceMenu;
 
-  // Failed update menu
-  failedUpdateMenu.parentMenu = &whichUpdateMenu;
-  this->addNodes(&failedUpdateMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() {
-    wifi_ble_scan_obj.currentScanMode = WIFI_SCAN_OFF;
-    this->changeMenu(failedUpdateMenu.parentMenu);
-  });
+	// Failed update menu
+	failedUpdateMenu.parentMenu = &whichUpdateMenu;
+	this->addNodes(&failedUpdateMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() {
+		wifi_ble_scan_obj.currentScanMode = WIFI_SCAN_OFF;
+		this->changeMenu(failedUpdateMenu.parentMenu);
+	});
 
-  // Device info menu
-  infoMenu.parentMenu = &deviceMenu;
-  this->addNodes(&infoMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() {
-    wifi_ble_scan_obj.currentScanMode = WIFI_SCAN_OFF;
-    this->changeMenu(infoMenu.parentMenu);
-  });
-  //language info menu
-  languageMenu.parentMenu = &deviceMenu;
-    this->addNodes(&languageMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() {
+	// Device info menu
+	infoMenu.parentMenu = &deviceMenu;
+	
+	this->addNodes(&infoMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() {
+		wifi_ble_scan_obj.currentScanMode = WIFI_SCAN_OFF;
+		this->changeMenu(infoMenu.parentMenu);
+	});
+
+	//language info menu
+	languageMenu.parentMenu = &deviceMenu;
+
+	this->addNodes(&languageMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() {
       wifi_ble_scan_obj.currentScanMode = WIFI_SCAN_OFF;
       this->changeMenu(infoMenu.parentMenu);
-    });
+	});
   // Set the current menu to the mainMenu
   this->changeMenu(&mainMenu);
 
@@ -1517,17 +1813,39 @@ void MenuFunctions::RunSetup()
   }
 #endif
 
+
+
 // Function to change menu
 void MenuFunctions::changeMenu(Menu * menu)
 {
-  display_obj.initScrollValues();
-  display_obj.setupScrollArea(TOP_FIXED_AREA, BOT_FIXED_AREA);
-  display_obj.tft.init();
-  current_menu = menu;
+	// 进入到窗体以后会再次刷新显示会不会好一点？
+	if(g_block_lvgl == true)
+	{
+		reshow_LVGL_menu();
+	}
 
-  buildButtons(menu);
+	display_obj.initScrollValues();
+	display_obj.setupScrollArea(TOP_FIXED_AREA, BOT_FIXED_AREA);
+	display_obj.tft.init();
+	current_menu = menu;
 
-  displayCurrentMenu();
+	// warning############
+	// 一定不要建立
+	// 这里就是旧的button ui
+	// 会与lvgl的btn产生严重冲突
+	// buildButtons(menu);
+	// warning############
+
+	// 使用 LVGL 按钮替代原来的 buildButtons
+	// 创建lvgl格式的按钮
+	createLVGLButtons(menu,0);
+	// 显示当前页面
+  displayCurrentMenu(0);
+
+	// 只渲染LVGL区域
+	g_limit_to_container = true;
+	lv_obj_get_coords(button_container, &g_btn_cont_area);
+	
 }
 
 // Function to show all MenuNodes in a Menu
@@ -1554,87 +1872,424 @@ void MenuFunctions::addNodes(Menu * menu, String name, uint16_t color, Menu * ch
   //menu->list->add(MenuNode{name, false, color, place, selected, callable});
 }
 
+// void MenuFunctions::buildButtons(Menu * menu, int starting_index, String button_name)
+// {
+//   if (menu->list != NULL)
+//   {
+//     this->menu_start_index = starting_index;
+//     for (uint8_t i = 0; i < menu->list->size(); i++)
+//     {
+//       TFT_eSPI_Button new_button;
+//       char buf[menu->list->get(starting_index + i).name.length() + 1] = {};
+//       if (button_name != "")
+//         menu->list->get(starting_index + i).name.toCharArray(buf, menu->list->get(starting_index + i).name.length() + 1);
+//       else
+//         button_name.toCharArray(buf, button_name.length() + 1);
+
+//       display_obj.key[i].initButton(&display_obj.tft,
+//                                     KEY_X + 0 * (KEY_W + KEY_SPACING_X),
+//                                     KEY_Y + i * (KEY_H + KEY_SPACING_Y), // x, y, w, h, outline, fill, text
+//                                     KEY_W,
+//                                     KEY_H,
+//                                     TFT_BLACK, // Outline
+//                                     TFT_BLACK, // Fill
+//                                     menu->list->get(starting_index + i).color, // Text
+//                                     buf,
+//                                     KEY_TEXTSIZE);
+
+
+//       display_obj.key[i].setLabelDatum(BUTTON_PADDING - (KEY_W / 2), 2, ML_DATUM);
+//     }
+//   }
+// }
+
 void MenuFunctions::buildButtons(Menu * menu, int starting_index, String button_name)
 {
-  if (menu->list != NULL)
-  {
-    this->menu_start_index = starting_index;
-    for (uint8_t i = 0; i < menu->list->size(); i++)
-    {
-      TFT_eSPI_Button new_button;
-      char buf[menu->list->get(starting_index + i).name.length() + 1] = {};
-      if (button_name != "")
-        menu->list->get(starting_index + i).name.toCharArray(buf, menu->list->get(starting_index + i).name.length() + 1);
-      else
-        button_name.toCharArray(buf, button_name.length() + 1);
-      display_obj.key[i].initButton(&display_obj.tft,
-                                    KEY_X + 0 * (KEY_W + KEY_SPACING_X),
-                                    KEY_Y + i * (KEY_H + KEY_SPACING_Y), // x, y, w, h, outline, fill, text
-                                    KEY_W,
-                                    KEY_H,
-                                    TFT_BLACK, // Outline
-                                    TFT_BLACK, // Fill
-                                    menu->list->get(starting_index + i).color, // Text
-                                    buf,
-                                    KEY_TEXTSIZE);
+	if (menu->list != NULL)
+	{
+		this->menu_start_index = starting_index;
+		for (uint8_t i = 0; i < menu->list->size(); i++)
+		{
+			TFT_eSPI_Button new_button;
+			char buf[menu->list->get(starting_index + i).name.length() + 1] = {};
+			if (button_name != "")
+			menu->list->get(starting_index + i).name.toCharArray(buf, menu->list->get(starting_index + i).name.length() + 1);
+			else
+			button_name.toCharArray(buf, button_name.length() + 1);
 
-      display_obj.key[i].setLabelDatum(BUTTON_PADDING - (KEY_W / 2), 2, ML_DATUM);
-    }
-  }
+			display_obj.key[i].initButton(&display_obj.tft,
+										KEY_X + 0 * (KEY_W + KEY_SPACING_X),
+										KEY_Y + i * (KEY_H + KEY_SPACING_Y), // x, y, w, h, outline, fill, text
+										KEY_W,
+										KEY_H,
+										TFT_BLACK, // Outline
+										TFT_BLACK, // Fill
+										menu->list->get(starting_index + i).color, // Text
+										buf,
+										KEY_TEXTSIZE);
+
+
+			display_obj.key[i].setLabelDatum(BUTTON_PADDING - (KEY_W / 2), 2, ML_DATUM);
+		}
+	}
 }
 
-void MenuFunctions::displayCurrentMenu(uint8_t start_index)
+
+
+
+
+// source
+// void MenuFunctions::displayCurrentMenu(uint8_t start_index)
+// {
+//   //Serial.println(F("Displaying current menu..."));
+//   display_obj.clearScreen();
+//   display_obj.updateBanner(current_menu->name);
+//   display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_DARKGREY);
+//   this->drawStatusBar();
+
+//   if (current_menu->list != NULL)
+//   {
+//     #ifdef HAS_FULL_SCREEN
+//       display_obj.tft.setFreeFont(MENU_FONT);
+//     #endif
+
+//     #ifdef HAS_MINI_SCREEN
+//       display_obj.tft.setFreeFont(NULL);
+//       display_obj.tft.setTextSize(1);
+//     #endif
+//     for (uint8_t i = start_index; i < current_menu->list->size(); i++)
+//     {
+//       #ifdef HAS_FULL_SCREEN
+//         #ifndef HAS_ILI9341
+//           if ((current_menu->list->get(i).selected) || (current_menu->selected == i)) {
+//             display_obj.key[i - start_index].drawButton(true, current_menu->list->get(i).name);
+//           }
+//           else {
+//             display_obj.key[i - start_index].drawButton(false, current_menu->list->get(i).name);          
+//           }
+//         #else
+//           display_obj.key[i].drawButton(false, current_menu->list->get(i).name); 
+//         #endif
+        
+//         if ((current_menu->list->get(i).name != text09) && (current_menu->list->get(i).icon != 255))
+//           display_obj.tft.drawXBitmap(0,
+//                                       KEY_Y + (i - start_index) * (KEY_H + KEY_SPACING_Y) - (ICON_H / 2),
+//                                       menu_icons[current_menu->list->get(i).icon],
+//                                       ICON_W,
+//                                       ICON_H,
+//                                       TFT_BLACK,
+//                                       current_menu->list->get(i).color);
+
+//       #endif
+
+//       #ifdef HAS_MINI_SCREEN
+//         if ((current_menu->selected == i) || (current_menu->list->get(i).selected))
+//           display_obj.key[i - start_index].drawButton(true, current_menu->list->get(i).name);
+//         else 
+//           display_obj.key[i - start_index].drawButton(false, current_menu->list->get(i).name);
+//       #endif
+//     }
+//     display_obj.tft.setFreeFont(NULL);
+//   }
+// }
+
+static void img_click_cb(lv_obj_t *img, lv_event_t event)
 {
-  //Serial.println(F("Displaying current menu..."));
+    char debug_string[64]="\0";
+    snprintf(debug_string,64,"img_click_cb-%d",event);
+    Serial.println(debug_string);
+    if(event == LV_EVENT_DELETE ) {
+        // 设置图片染色为红色
+        Serial.println("!!!!!!!!!!! LV_EVENT_RELEASED");
+        lv_obj_set_style_local_image_recolor(img, LV_IMG_PART_MAIN, LV_STATE_PRESSED, LV_COLOR_ORANGE);
+        lv_obj_set_style_local_image_recolor_opa(img, LV_IMG_PART_MAIN, LV_STATE_PRESSED, LV_OPA_COVER);
+        
+    }
+    else
+    {
+        Serial.println("!!!!!!!!!!! other func");
+        lv_obj_set_style_local_image_recolor(img, LV_IMG_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
+        lv_obj_set_style_local_image_recolor_opa(img, LV_IMG_PART_MAIN, LV_STATE_DEFAULT, LV_OPA_COVER);
+        
+    }
+}
+
+
+inline static lv_obj_t * inner_create_good_look_btn(lv_obj_t *parent,int btn_width,int btn_height,int btn_pos_x,int btn_pos_y,const char* btn_name)
+{
+	lv_obj_t *btn = lv_btn_create(parent, NULL);
+	lv_obj_set_size(btn, btn_width, btn_height);
+	lv_obj_set_pos(btn, btn_pos_x, btn_pos_y);
+	// 设置透明背景色
+	lv_obj_set_style_local_bg_opa(btn, LV_BTN_PART_MAIN, LV_STATE_DEFAULT, LV_OPA_TRANSP);
+
+	// 设置按钮边界颜色
+	lv_obj_set_style_local_border_color(btn, LV_BTN_PART_MAIN, LV_STATE_DEFAULT,LV_COLOR_WHITE);
+	lv_obj_set_style_local_border_color(btn, LV_BTN_PART_MAIN, LV_STATE_PRESSED, LV_COLOR_ORANGE);
+
+	// 设置按钮文本颜色
+	lv_obj_set_style_local_text_color(btn, LV_BTN_PART_MAIN, LV_STATE_DEFAULT,LV_COLOR_WHITE);
+	lv_obj_set_style_local_text_color(btn, LV_BTN_PART_MAIN, LV_STATE_PRESSED, LV_COLOR_ORANGE);
+
+	lv_obj_set_style_local_text_color(btn, LV_IMG_PART_MAIN, LV_STATE_DEFAULT,LV_COLOR_WHITE);
+	lv_obj_set_style_local_text_color(btn, LV_IMG_PART_MAIN, LV_STATE_PRESSED, LV_COLOR_ORANGE);
+
+  // 设置圆角弧度
+  // 设置为10即可
+	lv_obj_set_style_local_radius(btn, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 10);
+	lv_obj_set_style_local_border_width(btn, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 2);
+	lv_obj_set_style_local_pad_inner(btn, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
+
+	lv_obj_t *icon = NULL;
+	if(strstr(btn_name,"WiFi") != NULL)
+	{
+		LV_IMG_DECLARE(wifi_20x20);
+		icon = lv_img_create(btn, NULL);
+		lv_img_set_src(icon, &wifi_20x20);
+		 
+	}
+	else if(strstr(btn_name,"Bluetooth") != NULL)
+	{
+		// 设置图标
+		LV_IMG_DECLARE(image_bluetooth);
+		icon = lv_img_create(btn, NULL);
+		lv_img_set_src(icon, &image_bluetooth);
+
+	}
+	else if(strstr(btn_name,"Radio") != NULL || strstr(btn_name,"Monitor") != NULL || strstr(btn_name,"Capture") != NULL || strstr(btn_name,"Scan") != NULL)
+	{
+		// 设置图标
+		LV_IMG_DECLARE(image_radio);
+		icon = lv_img_create(btn, NULL);
+		lv_img_set_src(icon, &image_radio);
+
+	}
+
+	else if(strstr(btn_name,"Device") != NULL)
+	{
+		// 设置图标
+		LV_IMG_DECLARE(image_device);
+		icon = lv_img_create(btn, NULL);
+		lv_img_set_src(icon, &image_device);
+	}
+	else if(strstr(btn_name,"Reboot") != NULL)
+	{
+		// 设置图标
+		LV_IMG_DECLARE(image_reboot);
+		icon = lv_img_create(btn, NULL);
+		lv_img_set_src(icon, &image_reboot);
+	}
+	else if(strstr(btn_name,"Back") != NULL)
+	{
+		// 设置图标
+		LV_IMG_DECLARE(image_back);
+		icon = lv_img_create(btn, NULL);
+		lv_img_set_src(icon, &image_back);
+	}
+	else if(strstr(btn_name,"Sniffers") != NULL || strstr(btn_name,"Sniff") != NULL)
+	{
+		// 设置图标
+		LV_IMG_DECLARE(image_setting);
+		icon = lv_img_create(btn, NULL);
+		lv_img_set_src(icon, &image_setting);
+	}
+	else if(strstr(btn_name,"General") != NULL)
+	{
+		// 设置图标
+		LV_IMG_DECLARE(image_general);
+		icon = lv_img_create(btn, NULL);
+		lv_img_set_src(icon, &image_general);
+	}
+	else if(strstr(btn_name,"Back") != NULL)
+	{
+		// 设置图标
+		LV_IMG_DECLARE(image_back);
+		icon = lv_img_create(btn, NULL);
+		lv_img_set_src(icon, &image_back);
+	}
+	else
+	{	
+		LV_IMG_DECLARE(image_icon);
+		icon = lv_img_create(btn, NULL);
+		lv_img_set_src(icon, &image_icon);
+	}
+	lv_obj_align(icon, btn, LV_ALIGN_IN_TOP_MID, 0, 0);
+	lv_obj_set_style_local_image_recolor(icon, LV_IMG_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
+	lv_obj_set_style_local_image_recolor_opa(icon, LV_IMG_PART_MAIN, LV_STATE_DEFAULT, LV_OPA_COVER);
+	lv_obj_set_parent_event(icon, true);
+
+	lv_obj_t* label = lv_label_create(btn,NULL);
+	// 设置与父容器相关的事件绑定
+	lv_obj_set_parent_event(label, true);
+  	lv_obj_align(label, btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
+	// lv_label_set_recolor(label,true);
+
+	if(strlen(btn_name) >= 15)
+	{
+		lv_label_set_long_mode(label,  LV_LABEL_LONG_SROLL_CIRC);
+	}
+	else
+	{
+		lv_label_set_long_mode(label,  LV_LABEL_LONG_EXPAND);
+	}
+	
+	lv_label_set_text(label, btn_name);
+	// 设置长度
+	lv_obj_set_width(label, 100);
+	lv_obj_align(label, NULL,LV_ALIGN_CENTER, 0, 0);
+
+	lv_obj_set_style_local_text_font(label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &lv_font_montserrat_12);
+	// lv_obj_refresh_style(label, LV_OBJ_PART_ALL);
+
+	// 取消默认效果
+	lv_obj_set_style_local_outline_width(btn, LV_BTN_PART_MAIN, LV_STATE_DEFAULT, 0);
+	lv_obj_set_style_local_outline_opa(btn,   LV_BTN_PART_MAIN, LV_STATE_DEFAULT, LV_OPA_TRANSP);
+	lv_obj_set_style_local_outline_width(btn, LV_BTN_PART_MAIN, LV_STATE_PRESSED, 0);
+	lv_obj_set_style_local_outline_opa(btn,   LV_BTN_PART_MAIN, LV_STATE_PRESSED, LV_OPA_TRANSP);
+	lv_obj_set_style_local_outline_width(btn, LV_BTN_PART_MAIN, LV_STATE_FOCUSED, 0);
+	lv_obj_set_style_local_outline_opa(btn,   LV_BTN_PART_MAIN, LV_STATE_FOCUSED, LV_OPA_TRANSP);
+  
+	return btn;
+}
+
+void MenuFunctions::createLVGLButtons(Menu* menu, int starting_index) 
+{
+	if (menu->list != NULL) 
+	{
+		// 释放已经创建的内存
+		// 每次打开新的页面，记得释放原来的页面信息
+		if (button_container) 
+		{
+  			lv_obj_del(button_container);
+  			button_container = NULL;
+		}
+		for (int i = 0; i < BUTTON_ARRAY_LEN; i++) 
+			lv_buttons[i] = NULL;
+
+		if(button_container == NULL)
+		{
+			int screen_width = 240;
+			int screen_height = 320 - TOP_FIXED_AREA;
+			// 这里添加一些特殊窗体的处理逻辑
+			if(menu->name == "Radio Receiver" || menu->name == "Load APs" || menu->name == "Save Airtags" || menu->name == "Load Airtags" || 
+				menu->name == "Save APs" || menu->name == "Device Info " || menu->name == "ForcePMKID" || 
+				menu->name == "ForceProbe" || menu->name == "SavePCAP" || menu->name == "EnableLED")
+			{
+				screen_height = 80;
+				// char debug[128];
+				// snprintf(debug,128,"open menu name is :%s and screen_height is :%d",menu->name.c_str(),screen_height);
+				// Serial.println(debug);
+			}
+			// 特殊框体，需要隐藏、缩小菜单
+			int btn_height = 60;
+			// 这是主窗体
+			button_container = lv_obj_create(lv_scr_act(),NULL);
+			lv_obj_set_size(button_container, screen_width, screen_height);
+			lv_obj_set_pos(button_container, 0, TOP_FIXED_AREA);
+			// 设置黑色背景
+			lv_obj_set_style_local_bg_color(button_container,LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK);
+			lv_obj_set_style_local_radius(button_container, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
+			lv_obj_set_style_local_border_width(button_container, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
+			lv_obj_set_style_local_pad_inner(button_container, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 0);
+
+			// 一行两列式布局
+			for (uint8_t i = 0; i < menu->list->size() && i < BUTTON_ARRAY_LEN; i++)
+			{
+				int colunm = i /2;
+				int margin_offset = 5;
+				if(i == 0 || i % 2 == 0)
+				{
+					lv_buttons[i]=inner_create_good_look_btn(
+						button_container,
+						KEY_W/2 - 10,
+						btn_height, 
+						margin_offset,
+						(margin_offset + btn_height)*colunm ,
+						menu->list->get(starting_index + i).name.c_str());
+				}
+				else
+				{
+					lv_buttons[i]=inner_create_good_look_btn(
+						button_container,
+						KEY_W/2 - 10,
+						btn_height,
+						KEY_W/2+margin_offset,
+						(margin_offset + btn_height)*colunm ,
+						menu->list->get(starting_index + i).name.c_str());
+				}
+
+				// 设置回调函数
+				lv_obj_set_event_cb(lv_buttons[i], button_event_cb);
+				// 存储菜单项索引作为用户数据
+        lv_obj_set_user_data(lv_buttons[i], (void*)(intptr_t)(starting_index + i));
+			}
+		}
+	}
+}
+
+void MenuFunctions::button_event_cb(lv_obj_t * btn, lv_event_t event) {
+  extern MenuFunctions menu_function_obj;
+  // stack数据结构
+  lv_obj_t *icon = lv_obj_get_child(btn, NULL);
+  lv_obj_t *label = lv_obj_get_child(btn, icon);
+	if(event == LV_EVENT_RELEASED)
+	{
+		// 获取按钮索引
+		int button_index = (int)(intptr_t)lv_obj_get_user_data(btn);
+		// 执行对应的菜单项功能
+		if (button_index < menu_function_obj.current_menu->list->size()) 
+		{
+			menu_function_obj.current_menu->list->get(button_index).callable();
+		}
+	}
+    else 
+    {
+		if(icon)
+		{
+			// Serial.println("set icon color");	
+			lv_obj_set_style_local_image_recolor(icon, LV_IMG_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_ORANGE);
+			lv_obj_set_style_local_image_recolor_opa(icon, LV_IMG_PART_MAIN, LV_STATE_DEFAULT, LV_OPA_COVER);
+		}
+		if(label)
+		{
+			// Serial.println("set label color");
+			lv_obj_set_style_local_image_recolor(label, LV_IMG_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_ORANGE);
+			lv_obj_set_style_local_image_recolor_opa(label, LV_IMG_PART_MAIN, LV_STATE_DEFAULT, LV_OPA_COVER);
+		}
+    }
+}
+
+void MenuFunctions::displayCurrentMenu(uint8_t start_index) 
+{
   display_obj.clearScreen();
   display_obj.updateBanner(current_menu->name);
   display_obj.tft.setTextColor(TFT_LIGHTGREY, TFT_DARKGREY);
   this->drawStatusBar();
+}
 
-  if (current_menu->list != NULL)
-  {
-    #ifdef HAS_FULL_SCREEN
-      display_obj.tft.setFreeFont(MENU_FONT);
-    #endif
+/// @brief 隐藏LVGL菜单
+void MenuFunctions::hiden_LVGL_menu()
+{
+	// 用于跳过LVGL重绘回调函数
+	g_block_lvgl = true;
+	if(button_container)
+	{
+		lv_obj_set_hidden(button_container,true);
+	}
+	lv_task_handler();
+}
 
-    #ifdef HAS_MINI_SCREEN
-      display_obj.tft.setFreeFont(NULL);
-      display_obj.tft.setTextSize(1);
-    #endif
-    for (uint8_t i = start_index; i < current_menu->list->size(); i++)
-    {
-      #ifdef HAS_FULL_SCREEN
-        #ifndef HAS_ILI9341
-          if ((current_menu->list->get(i).selected) || (current_menu->selected == i)) {
-            display_obj.key[i - start_index].drawButton(true, current_menu->list->get(i).name);
-          }
-          else {
-            display_obj.key[i - start_index].drawButton(false, current_menu->list->get(i).name);          
-          }
-        #else
-          display_obj.key[i].drawButton(false, current_menu->list->get(i).name); 
-        #endif
-        
-        if ((current_menu->list->get(i).name != text09) && (current_menu->list->get(i).icon != 255))
-          display_obj.tft.drawXBitmap(0,
-                                      KEY_Y + (i - start_index) * (KEY_H + KEY_SPACING_Y) - (ICON_H / 2),
-                                      menu_icons[current_menu->list->get(i).icon],
-                                      ICON_W,
-                                      ICON_H,
-                                      TFT_BLACK,
-                                      current_menu->list->get(i).color);
-
-      #endif
-
-      #ifdef HAS_MINI_SCREEN
-        if ((current_menu->selected == i) || (current_menu->list->get(i).selected))
-          display_obj.key[i - start_index].drawButton(true, current_menu->list->get(i).name);
-        else 
-          display_obj.key[i - start_index].drawButton(false, current_menu->list->get(i).name);
-      #endif
-    }
-    display_obj.tft.setFreeFont(NULL);
-  }
+/// @brief 再次显示LVGL菜单
+void MenuFunctions::reshow_LVGL_menu()
+{
+	// 用于跳过LVGL重绘回调函数
+	g_block_lvgl = false;
+	// 不为空才考虑进行重绘菜单
+	if(button_container)
+	{
+		lv_obj_set_hidden(button_container,false);
+		lv_task_handler();
+	}
 }
 
 #endif
